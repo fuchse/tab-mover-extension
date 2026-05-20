@@ -4,6 +4,8 @@ const LAUNCHER_URL = 'popup.html?launcher=1';
 
 let launcherWindowId = null;
 
+chrome.action.onClicked.addListener(openLauncherWindow);
+
 chrome.commands.onCommand.addListener(async command => {
   if (command === 'open-tab-mover') {
     await openLauncherWindow();
@@ -67,6 +69,6 @@ function getCenteredPosition(windowInfo) {
 
   return {
     left: Math.round(left + (width - LAUNCHER_WIDTH) / 2),
-    top: Math.round(top + Math.max((height - LAUNCHER_HEIGHT) / 3, 24)),
+    top: Math.round(top + (height - LAUNCHER_HEIGHT) / 2),
   };
 }
