@@ -1018,15 +1018,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 5px;
+        gap: 4px;
         min-width: 80px;
-        padding: 5px 11px;
+        padding: 5px 11px 6px;
         color: #74746f;
         background: transparent;
         border: 1px solid transparent;
         border-radius: 8px;
         cursor: pointer;
-        font: 500 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 500 11px/0 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: -0.01em;
         text-transform: none;
         transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
