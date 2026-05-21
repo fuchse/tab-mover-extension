@@ -174,17 +174,17 @@
           <div class="finder">
             ${searchIcon()}
             <input id="finder-input" class="finder-input" value="${escapeHtml(state.query)}" placeholder="Search groups and windows" autocomplete="off" spellcheck="false" />
+            ${state.query.trim() ? '' : `
+              <div class="tab-nav">
+                <button class="tab-btn ${state.activePanel === 'groups' ? 'active' : ''}" data-panel="groups">
+                  ${groupsIcon()} Groups
+                </button>
+                <button class="tab-btn ${state.activePanel === 'windows' ? 'active' : ''}" data-panel="windows">
+                  ${windowIcon()} Windows
+                </button>
+              </div>
+            `}
           </div>
-          ${state.query.trim() ? '' : `
-            <div class="tab-nav">
-              <button class="tab-btn ${state.activePanel === 'groups' ? 'active' : ''}" data-panel="groups">
-                ${groupsIcon()} Groups
-              </button>
-              <button class="tab-btn ${state.activePanel === 'windows' ? 'active' : ''}" data-panel="windows">
-                ${windowIcon()} Windows
-              </button>
-            </div>
-          `}
           <div class="panels">
             <div class="panel ${state.query.trim() ? 'active' : ''}" id="search-panel"></div>
             <div class="panel ${!state.query.trim() && state.activePanel === 'groups' ? 'active' : ''}" id="groups-panel"></div>
@@ -950,6 +950,8 @@
         align-items: center;
         gap: 8px;
         margin: 14px 14px 0;
+        min-height: 32px;
+        box-sizing: content-box;
         padding: 10px 12px;
         background: #fff;
         border: 1px solid #e7e7e3;
@@ -985,11 +987,11 @@
         display: flex;
         align-self: center;
         gap: 4px;
-        margin: 12px 0 2px;
+        margin: 0;
         padding: 3px;
         background: #f4f4f1;
         border: 1px solid #ecece8;
-        border-radius: 999px;
+        border-radius: 12px;
       }
 
       .tab-btn {
@@ -997,12 +999,12 @@
         align-items: center;
         justify-content: center;
         gap: 5px;
-        min-width: 96px;
+        min-width: 80px;
         padding: 5px 11px;
         color: #74746f;
         background: transparent;
         border: 1px solid transparent;
-        border-radius: 999px;
+        border-radius: 8px;
         cursor: pointer;
         font: 500 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: -0.01em;
