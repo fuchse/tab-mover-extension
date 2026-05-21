@@ -67,6 +67,7 @@
   }
 
   function close() {
+    document.removeEventListener('keydown', handleDocumentKeydown, true);
     host?.remove();
   }
 
@@ -76,7 +77,7 @@
     host = document.createElement('div');
     host.id = 'tab-mover-overlay-host';
     root = host.attachShadow({ mode: 'open' });
-    root.addEventListener('keydown', handleRootKeydown);
+    document.addEventListener('keydown', handleDocumentKeydown, true);
     document.documentElement.appendChild(host);
   }
 
@@ -409,9 +410,12 @@
     });
   }
 
-  function handleRootKeydown(event) {
+  function handleDocumentKeydown(event) {
     if (event.key !== 'Escape') return;
+    if (!host?.isConnected) return;
 
+    event.preventDefault();
+    event.stopPropagation();
     if (state.isGroupFormOpen || state.isWindowFormOpen) {
       state.isGroupFormOpen = false;
       state.isWindowFormOpen = false;
