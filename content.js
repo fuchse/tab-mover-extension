@@ -215,11 +215,10 @@
     if (otherWindows.length > 0) {
       container.appendChild(makeLabel('Existing windows'));
 
-      otherWindows.forEach((windowInfo, index) => {
+      otherWindows.forEach(windowInfo => {
         container.appendChild(makeItem({
           icon: windowIcon(),
-          label: `Window ${index + 1}`,
-          meta: `id ${windowInfo.id}`,
+          label: makeWindowLabel(windowInfo),
           onClick: () => runAction('Tab moved to window', {
             type: 'TAB_MOVER_MOVE_TO_WINDOW',
             windowId: windowInfo.id,
@@ -244,6 +243,36 @@
     if (state.isWindowFormOpen) {
       container.appendChild(makeWindowForm());
     }
+  }
+
+  function makeWindowLabel(windowInfo) {
+    const tabs = windowInfo.tabs || [];
+    const titleTab = tabs.find(tab => tab.active) || tabs[tabs.length - 1];
+    const title = titleTab?.title || titleTab?.url;
+    const label = document.createElement('span');
+
+    if (!title || tabs.length <= 1) {
+      label.textContent = title || `Window ${windowInfo.id}`;
+      return label;
+    }
+
+    const otherTabCount = tabs.length - 1;
+    const titleEl = document.createElement('span');
+    titleEl.className = 'window-title';
+    titleEl.textContent = title;
+    titleEl.title = title;
+
+    const suffixEl = document.createElement('span');
+    suffixEl.className = 'window-suffix';
+    suffixEl.textContent = `... and ${otherTabCount} other ${pluralize('tab', otherTabCount)}`;
+
+    label.className = 'window-label';
+    label.append(titleEl, suffixEl);
+    return label;
+  }
+
+  function pluralize(word, count) {
+    return count === 1 ? word : `${word}s`;
   }
 
   function makeGroupForm() {
@@ -338,7 +367,11 @@
 
     const labelEl = document.createElement('span');
     labelEl.className = 'item-label';
-    labelEl.textContent = label;
+    if (label instanceof Node) {
+      labelEl.appendChild(label);
+    } else {
+      labelEl.textContent = label;
+    }
     item.appendChild(labelEl);
 
     const metaEl = document.createElement('span');
@@ -662,10 +695,28 @@
 
       .item-label {
         flex: 1;
+        min-width: 0;
         overflow: hidden;
         color: #2d2d2b;
         font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .window-label {
+        display: flex;
+        min-width: 0;
+      }
+
+      .window-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: clip;
+        white-space: nowrap;
+      }
+
+      .window-suffix {
+        flex: 0 0 auto;
         white-space: nowrap;
       }
 
