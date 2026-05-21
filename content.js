@@ -111,11 +111,12 @@
 
   function render() {
     const title = state.currentTab?.title || state.currentTab?.url || 'Current tab';
+    const icon = state.currentTab?.favIconUrl || '';
     root.innerHTML = `
       <style>${styles()}</style>
       <div class="backdrop" part="backdrop">
         <section class="launcher" role="dialog" aria-modal="true" aria-label="Tab Mover">
-          ${headerMarkup(title)}
+          ${headerMarkup(title, icon)}
           <div class="finder">
             ${searchIcon()}
             <input id="finder-input" class="finder-input" value="${escapeHtml(state.query)}" placeholder="Search groups and windows" autocomplete="off" spellcheck="false" />
@@ -153,15 +154,14 @@
     finderInput?.setSelectionRange(finderInput.value.length, finderInput.value.length);
   }
 
-  function headerMarkup(title) {
+  function headerMarkup(title, icon = '') {
     return `
       <header class="header">
-        <div class="header-icon">${appIcon()}</div>
+        <div class="current-tab-icon">${faviconMarkup(icon) || appIcon()}</div>
         <div>
-          <div class="eyebrow">Tab Mover</div>
-          <div class="subtitle">Move the active tab without leaving the page</div>
+          <div class="current-tab" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
         </div>
-        <div class="current-tab" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="eyebrow">Tab Mover</div>
       </header>
     `;
   }
@@ -231,8 +231,9 @@
       container.appendChild(makeLabel('Existing windows'));
 
       otherWindows.forEach(windowInfo => {
+        const displayTab = getWindowDisplayTab(windowInfo);
         container.appendChild(makeItem({
-          icon: windowIcon(),
+          prefix: makeFavicon(displayTab?.favIconUrl, windowIcon()),
           label: makeWindowLabel(windowInfo),
           onClick: () => runAction('Tab moved to window', {
             type: 'TAB_MOVER_MOVE_TO_WINDOW',
@@ -292,6 +293,7 @@
         dot.style.background = COLOR_HEX[group.color] || COLOR_HEX.grey;
 
         return {
+          type: 'group',
           prefix: dot,
           label,
           meta: `Group · Window ${group.windowId}`,
@@ -312,9 +314,11 @@
         const searchText = getWindowSearchText(windowInfo);
         const score = fuzzyScore(query, searchText);
         if (score === null) return null;
+        const displayTab = getWindowDisplayTab(windowInfo);
 
         return {
-          icon: windowIcon(),
+          type: 'window',
+          prefix: makeFavicon(displayTab?.favIconUrl, windowIcon()),
           label: makeWindowLabel(windowInfo),
           meta: 'Window',
           score,
@@ -327,7 +331,10 @@
       .filter(Boolean);
 
     return [...groupResults, ...windowResults]
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'group' ? -1 : 1;
+        return b.score - a.score;
+      })
       .slice(0, 12);
   }
 
@@ -354,7 +361,7 @@
 
   function makeWindowLabel(windowInfo) {
     const tabs = windowInfo.tabs || [];
-    const titleTab = tabs.find(tab => tab.active) || tabs[tabs.length - 1];
+    const titleTab = getWindowDisplayTab(windowInfo);
     const title = titleTab?.title || titleTab?.url;
     const label = document.createElement('span');
 
@@ -380,9 +387,14 @@
 
   function getWindowSearchText(windowInfo) {
     const tabs = windowInfo.tabs || [];
-    const activeTab = tabs.find(tab => tab.active) || tabs[tabs.length - 1];
+    const activeTab = getWindowDisplayTab(windowInfo);
     const tabTitles = tabs.map(tab => tab.title || tab.url || '').join(' ');
     return `${activeTab?.title || activeTab?.url || ''} ${tabTitles} window`;
+  }
+
+  function getWindowDisplayTab(windowInfo) {
+    const tabs = windowInfo.tabs || [];
+    return tabs.find(tab => tab.active) || tabs[tabs.length - 1] || null;
   }
 
   function pluralize(word, count) {
@@ -495,6 +507,31 @@
 
     if (onClick && !isCurrent) item.addEventListener('click', onClick);
     return item;
+  }
+
+  function makeFavicon(iconUrl, fallbackIcon) {
+    if (!iconUrl) {
+      const fallback = document.createElement('span');
+      fallback.className = 'item-icon';
+      fallback.innerHTML = fallbackIcon;
+      return fallback;
+    }
+
+    const wrap = document.createElement('span');
+    wrap.className = 'favicon-wrap item-icon';
+
+    const img = document.createElement('img');
+    img.className = 'favicon';
+    img.src = iconUrl;
+    img.alt = '';
+    img.referrerPolicy = 'no-referrer';
+    img.addEventListener('error', () => {
+      wrap.classList.remove('favicon-wrap');
+      wrap.innerHTML = fallbackIcon;
+    }, { once: true });
+
+    wrap.appendChild(img);
+    return wrap;
   }
 
   function makeLabel(text) {
@@ -681,6 +718,11 @@
       .replace(/'/g, '&#039;');
   }
 
+  function faviconMarkup(iconUrl) {
+    if (!iconUrl) return '';
+    return `<img class="favicon header-favicon" src="${escapeHtml(iconUrl)}" alt="" referrerpolicy="no-referrer" />`;
+  }
+
   function styles() {
     return `
       :host {
@@ -697,9 +739,10 @@
         position: fixed;
         inset: 0;
         z-index: 2147483647;
-        display: grid;
-        place-items: center;
-        padding: 24px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: min(12vh, 326px) 24px 24px;
         background:
           radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.74), transparent 26%),
           rgba(248, 248, 246, 0.72);
@@ -732,7 +775,7 @@
         border-bottom: 1px solid #eeeeec;
       }
 
-      .header-icon {
+      .current-tab-icon {
         width: 26px;
         height: 26px;
         display: grid;
@@ -744,17 +787,34 @@
         box-shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
       }
 
-      .header-icon svg {
+      .current-tab-icon svg {
         width: 14px;
         height: 14px;
         fill: #b7b7b2;
       }
 
-      .eyebrow {
+      .favicon {
+        width: 16px;
+        height: 16px;
+        display: block;
+        border-radius: 4px;
+        object-fit: contain;
+      }
+
+      .header-favicon {
+        width: 16px;
+        height: 16px;
+      }
+
+      .current-tab {
         color: #232323;
         font: 520 13px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: -0.01em;
         text-transform: none;
+        max-width: 300px;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
       }
 
       .subtitle {
@@ -763,15 +823,11 @@
         font: 11px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      .current-tab {
+      .eyebrow {
         margin-left: auto;
-        max-width: 210px;
-        overflow: hidden;
         color: #9b9b95;
         font: 11px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         text-align: right;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
 
       .finder {
@@ -919,6 +975,8 @@
         height: 9px;
         flex: 0 0 auto;
         border-radius: 999px;
+        margin-right: 4px;
+        margin-left: 4px;
       }
 
       .item-icon {
@@ -934,6 +992,11 @@
         height: 14px;
         fill: none;
         stroke: #a5a59f;
+      }
+
+      .item-icon .favicon {
+        width: 16px;
+        height: 16px;
       }
 
       .item-label {

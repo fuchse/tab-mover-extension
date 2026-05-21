@@ -67,6 +67,7 @@ async function handleOverlayMessage(message, sender) {
 }
 
 async function getOverlayState(tab) {
+  const currentTab = await chrome.tabs.get(tab.id);
   const [groups, windows] = await Promise.all([
     chrome.tabGroups.query({}),
     chrome.windows.getAll({ populate: true, windowTypes: ['normal'] }),
@@ -75,11 +76,12 @@ async function getOverlayState(tab) {
   return {
     ok: true,
     currentTab: {
-      id: tab.id,
-      title: tab.title,
-      url: tab.url,
-      groupId: tab.groupId,
-      windowId: tab.windowId,
+      id: currentTab.id,
+      title: currentTab.title,
+      url: currentTab.url,
+      favIconUrl: currentTab.favIconUrl,
+      groupId: currentTab.groupId,
+      windowId: currentTab.windowId,
     },
     groups,
     windows,
