@@ -47,10 +47,10 @@ async function handleOverlayMessage(message, sender) {
     case 'TAB_MOVER_GET_STATE':
       return getOverlayState(tab);
     case 'TAB_MOVER_MOVE_TO_GROUP':
-      await moveToGroup(tab, message.groupId, message.windowId);
+      await moveToGroup(tab, message.groupId, message.windowId, message.activate);
       return { ok: true };
     case 'TAB_MOVER_MOVE_TO_WINDOW':
-      await moveToWindow(tab, message.windowId);
+      await moveToWindow(tab, message.windowId, message.activate);
       return { ok: true };
     case 'TAB_MOVER_UNGROUP':
       await chrome.tabs.ungroup(tab.id);
@@ -88,16 +88,26 @@ async function getOverlayState(tab) {
   };
 }
 
-async function moveToGroup(tab, groupId, windowId) {
+async function moveToGroup(tab, groupId, windowId, activate = false) {
   if (windowId !== tab.windowId) {
     await chrome.tabs.move(tab.id, { windowId, index: -1 });
   }
 
   await chrome.tabs.group({ tabIds: [tab.id], groupId });
+  if (activate) {
+    await activateTabInWindow(tab.id, windowId);
+  }
 }
 
-async function moveToWindow(tab, windowId) {
+async function moveToWindow(tab, windowId, activate = false) {
   await chrome.tabs.move(tab.id, { windowId, index: -1 });
+  if (activate) {
+    await activateTabInWindow(tab.id, windowId);
+  }
+}
+
+async function activateTabInWindow(tabId, windowId) {
+  await chrome.tabs.update(tabId, { active: true });
   await chrome.windows.update(windowId, { focused: true });
 }
 

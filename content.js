@@ -243,11 +243,11 @@
             ? () => runAction('Tab removed from group', {
               type: 'TAB_MOVER_UNGROUP',
             })
-            : () => runAction('Tab moved to group', {
+            : event => runAction('Tab moved to group', withActivation({
               type: 'TAB_MOVER_MOVE_TO_GROUP',
               groupId: group.id,
               windowId: group.windowId,
-            }),
+            }, event)),
         }));
       });
 
@@ -283,10 +283,10 @@
         container.appendChild(makeItem({
           prefix: makeFavicon(displayTab?.favIconUrl, windowIcon()),
           label: makeWindowLabel(windowInfo),
-          onClick: () => runAction('Tab moved to window', {
+          onClick: event => runAction('Tab moved to window', withActivation({
             type: 'TAB_MOVER_MOVE_TO_WINDOW',
             windowId: windowInfo.id,
-          }),
+          }, event)),
         }));
       });
 
@@ -352,11 +352,11 @@
             ? () => runAction('Tab removed from group', {
               type: 'TAB_MOVER_UNGROUP',
             })
-            : () => runAction('Tab moved to group', {
+            : event => runAction('Tab moved to group', withActivation({
               type: 'TAB_MOVER_MOVE_TO_GROUP',
               groupId: group.id,
               windowId: group.windowId,
-            }),
+            }, event)),
         };
       })
       .filter(Boolean);
@@ -375,10 +375,10 @@
           label: makeWindowLabel(windowInfo),
           meta: 'Window',
           score,
-          onClick: () => runAction('Tab moved to window', {
+          onClick: event => runAction('Tab moved to window', withActivation({
             type: 'TAB_MOVER_MOVE_TO_WINDOW',
             windowId: windowInfo.id,
-          }),
+          }, event)),
         };
       })
       .filter(Boolean);
@@ -614,6 +614,11 @@
     return button;
   }
 
+  function withActivation(message, event) {
+    if (!event?.shiftKey) return message;
+    return { ...message, activate: true };
+  }
+
   function bindGlobalEvents() {
     root.querySelector('.backdrop')?.addEventListener('click', event => {
       if (event.target === event.currentTarget) close();
@@ -725,7 +730,10 @@
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      selectedItem.click();
+      selectedItem.dispatchEvent(new MouseEvent('click', {
+        bubbles: true,
+        shiftKey: event.shiftKey,
+      }));
     }
   }
 
