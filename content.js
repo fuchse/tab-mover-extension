@@ -30,10 +30,12 @@
     'wheel',
     'focusin',
   ];
+  const BACKDROP_FADE_MS = 120;
 
   let host = null;
   let root = null;
   let previousDocumentOverflow = '';
+  let isClosing = false;
   let state = {
     currentTab: null,
     groups: [],
@@ -54,6 +56,8 @@
   open();
 
   async function toggle() {
+    if (isClosing) return;
+
     if (host?.isConnected) {
       close();
       return;
@@ -63,6 +67,8 @@
   }
 
   async function open() {
+    if (isClosing) return;
+
     mount();
     renderLoading();
 
@@ -84,6 +90,15 @@
   }
 
   function close() {
+    if (!host?.isConnected || isClosing) return;
+
+    isClosing = true;
+    host.classList.remove('visible');
+    host.classList.add('closing');
+    setTimeout(cleanupOverlay, BACKDROP_FADE_MS);
+  }
+
+  function cleanupOverlay() {
     document.removeEventListener('keydown', handleDocumentKeydown, true);
     document.removeEventListener('keyup', trapPageKeyboardEvent, true);
     document.removeEventListener('keypress', trapPageKeyboardEvent, true);
@@ -92,6 +107,9 @@
     });
     document.documentElement.style.overflow = previousDocumentOverflow;
     host?.remove();
+    host = null;
+    root = null;
+    isClosing = false;
   }
 
   function mount() {
@@ -115,6 +133,7 @@
       document.addEventListener(type, trapPageEvent, true);
     });
     document.documentElement.appendChild(host);
+    requestAnimationFrame(() => host?.classList.add('visible'));
   }
 
   function renderLoading() {
@@ -821,9 +840,19 @@
         justify-content: center;
         padding: min(12vh, 326px) 24px 24px;
         background:
-          radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.74), transparent 26%),
+          radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.74), transparent 22%),
           rgba(248, 248, 246, 0.72);
-        backdrop-filter: blur(5px) saturate(0.96);
+        backdrop-filter: blur(2px) saturate(0.95);
+        opacity: 0;
+        transition: opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      :host(.visible) .backdrop {
+        opacity: 1;
+      }
+
+      :host(.closing) .backdrop {
+        opacity: 0;
       }
 
       .launcher {
