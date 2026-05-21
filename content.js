@@ -25,6 +25,8 @@
     groups: [],
     windows: [],
     activePanel: 'groups',
+    query: '',
+    selectedIndex: 0,
     selectedColor: 'blue',
     isGroupFormOpen: false,
     isWindowFormOpen: false,
@@ -57,6 +59,7 @@
         currentTab: response.currentTab,
         groups: response.groups || [],
         windows: response.windows || [],
+        selectedIndex: 0,
         isGroupFormOpen: false,
         isWindowFormOpen: false,
       };
@@ -113,17 +116,24 @@
       <div class="backdrop" part="backdrop">
         <section class="launcher" role="dialog" aria-modal="true" aria-label="Tab Mover">
           ${headerMarkup(title)}
-          <div class="tab-nav">
-            <button class="tab-btn ${state.activePanel === 'groups' ? 'active' : ''}" data-panel="groups">
-              ${groupsIcon()} Groups
-            </button>
-            <button class="tab-btn ${state.activePanel === 'windows' ? 'active' : ''}" data-panel="windows">
-              ${windowIcon()} Windows
-            </button>
+          <div class="finder">
+            ${searchIcon()}
+            <input id="finder-input" class="finder-input" value="${escapeHtml(state.query)}" placeholder="Search groups and windows" autocomplete="off" spellcheck="false" />
           </div>
+          ${state.query.trim() ? '' : `
+            <div class="tab-nav">
+              <button class="tab-btn ${state.activePanel === 'groups' ? 'active' : ''}" data-panel="groups">
+                ${groupsIcon()} Groups
+              </button>
+              <button class="tab-btn ${state.activePanel === 'windows' ? 'active' : ''}" data-panel="windows">
+                ${windowIcon()} Windows
+              </button>
+            </div>
+          `}
           <div class="panels">
-            <div class="panel ${state.activePanel === 'groups' ? 'active' : ''}" id="groups-panel"></div>
-            <div class="panel ${state.activePanel === 'windows' ? 'active' : ''}" id="windows-panel"></div>
+            <div class="panel ${state.query.trim() ? 'active' : ''}" id="search-panel"></div>
+            <div class="panel ${!state.query.trim() && state.activePanel === 'groups' ? 'active' : ''}" id="groups-panel"></div>
+            <div class="panel ${!state.query.trim() && state.activePanel === 'windows' ? 'active' : ''}" id="windows-panel"></div>
           </div>
           <div class="toast" id="toast"></div>
         </section>
@@ -132,11 +142,15 @@
 
     renderGroups();
     renderWindows();
+    renderSearchResults();
     bindGlobalEvents();
+    bindFinderEvents();
     bindTabEvents();
+    updateSelectedItem();
 
-    const firstAction = root.querySelector('.item:not(.current)');
-    firstAction?.focus({ preventScroll: true });
+    const finderInput = root.getElementById('finder-input');
+    finderInput?.focus({ preventScroll: true });
+    finderInput?.setSelectionRange(finderInput.value.length, finderInput.value.length);
   }
 
   function headerMarkup(title) {
@@ -246,6 +260,98 @@
     }
   }
 
+  function renderSearchResults() {
+    const container = root.getElementById('search-panel');
+    container.innerHTML = '';
+
+    const query = state.query.trim();
+    if (!query) return;
+
+    const results = getSearchResults(query);
+    if (results.length === 0) {
+      container.appendChild(makeEmptyState('No matching groups or windows'));
+      return;
+    }
+
+    container.appendChild(makeLabel('Search results'));
+    results.forEach(result => {
+      container.appendChild(makeItem(result));
+    });
+  }
+
+  function getSearchResults(query) {
+    const groupResults = state.groups
+      .map(group => {
+        const label = group.title || '(unnamed group)';
+        const haystack = `${label} group window ${group.windowId}`;
+        const score = fuzzyScore(query, haystack);
+        if (score === null) return null;
+
+        const dot = document.createElement('span');
+        dot.className = 'item-dot';
+        dot.style.background = COLOR_HEX[group.color] || COLOR_HEX.grey;
+
+        return {
+          prefix: dot,
+          label,
+          meta: `Group · Window ${group.windowId}`,
+          score,
+          isCurrent: state.currentTab?.groupId === group.id,
+          onClick: () => runAction('Tab moved to group', {
+            type: 'TAB_MOVER_MOVE_TO_GROUP',
+            groupId: group.id,
+            windowId: group.windowId,
+          }),
+        };
+      })
+      .filter(Boolean);
+
+    const windowResults = state.windows
+      .filter(windowInfo => windowInfo.id !== state.currentTab?.windowId)
+      .map(windowInfo => {
+        const searchText = getWindowSearchText(windowInfo);
+        const score = fuzzyScore(query, searchText);
+        if (score === null) return null;
+
+        return {
+          icon: windowIcon(),
+          label: makeWindowLabel(windowInfo),
+          meta: 'Window',
+          score,
+          onClick: () => runAction('Tab moved to window', {
+            type: 'TAB_MOVER_MOVE_TO_WINDOW',
+            windowId: windowInfo.id,
+          }),
+        };
+      })
+      .filter(Boolean);
+
+    return [...groupResults, ...windowResults]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12);
+  }
+
+  function fuzzyScore(query, value) {
+    const needle = query.toLowerCase();
+    const haystack = String(value || '').toLowerCase();
+    let lastMatch = -1;
+    let score = 0;
+
+    for (const char of needle) {
+      const index = haystack.indexOf(char, lastMatch + 1);
+      if (index === -1) return null;
+
+      score += index === lastMatch + 1 ? 8 : 2;
+      if (index === 0 || /\s|[-_/|:]/.test(haystack[index - 1])) score += 4;
+      lastMatch = index;
+    }
+
+    if (haystack.includes(needle)) score += 20;
+    if (haystack.startsWith(needle)) score += 12;
+
+    return score - haystack.length * 0.01;
+  }
+
   function makeWindowLabel(windowInfo) {
     const tabs = windowInfo.tabs || [];
     const titleTab = tabs.find(tab => tab.active) || tabs[tabs.length - 1];
@@ -270,6 +376,13 @@
     label.className = 'window-label';
     label.append(titleEl, suffixEl);
     return label;
+  }
+
+  function getWindowSearchText(windowInfo) {
+    const tabs = windowInfo.tabs || [];
+    const activeTab = tabs.find(tab => tab.active) || tabs[tabs.length - 1];
+    const tabTitles = tabs.map(tab => tab.title || tab.url || '').join(' ');
+    return `${activeTab?.title || activeTab?.url || ''} ${tabTitles} window`;
   }
 
   function pluralize(word, count) {
@@ -397,6 +510,13 @@
     return divider;
   }
 
+  function makeEmptyState(text) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = text;
+    return empty;
+  }
+
   function makeButton(text, variant) {
     const button = document.createElement('button');
     button.className = `btn btn-${variant}`;
@@ -410,31 +530,108 @@
     });
   }
 
-  function handleDocumentKeydown(event) {
-    if (event.key !== 'Escape') return;
-    if (!host?.isConnected) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-    if (state.isGroupFormOpen || state.isWindowFormOpen) {
+  function bindFinderEvents() {
+    const finderInput = root.getElementById('finder-input');
+    finderInput?.addEventListener('input', event => {
+      state.query = event.target.value;
+      state.selectedIndex = 0;
       state.isGroupFormOpen = false;
       state.isWindowFormOpen = false;
+      render();
+    });
+  }
+
+  function handleDocumentKeydown(event) {
+    if (!host?.isConnected) return;
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (state.isGroupFormOpen || state.isWindowFormOpen) {
+        state.isGroupFormOpen = false;
+        state.isWindowFormOpen = false;
+        render();
+        return;
+      }
+
+      close();
+      return;
+    }
+
+    if (state.isGroupFormOpen || state.isWindowFormOpen) {
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveSelection(1);
+      return;
+    }
+
+    if (event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) {
+      event.preventDefault();
+      event.stopPropagation();
+      moveSelection(-1);
+      return;
+    }
+
+    if (!state.query.trim() && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      event.preventDefault();
+      event.stopPropagation();
+      state.activePanel = event.key === 'ArrowLeft' ? 'groups' : 'windows';
+      state.selectedIndex = 0;
       render();
       return;
     }
 
-    close();
+    if (event.key === 'Enter') {
+      const selectedItem = getNavigableItems()[state.selectedIndex];
+      if (!selectedItem) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      selectedItem.click();
+    }
   }
 
   function bindTabEvents() {
     root.querySelectorAll('.tab-btn').forEach(button => {
       button.addEventListener('click', () => {
         state.activePanel = button.dataset.panel;
+        state.selectedIndex = 0;
         state.isGroupFormOpen = false;
         state.isWindowFormOpen = false;
         render();
       });
     });
+  }
+
+  function moveSelection(direction) {
+    const items = getNavigableItems();
+    if (items.length === 0) return;
+
+    state.selectedIndex = (state.selectedIndex + direction + items.length) % items.length;
+    updateSelectedItem();
+  }
+
+  function updateSelectedItem() {
+    const items = getNavigableItems();
+    if (items.length === 0) {
+      state.selectedIndex = 0;
+      return;
+    }
+
+    state.selectedIndex = Math.min(Math.max(state.selectedIndex, 0), items.length - 1);
+    items.forEach((item, index) => {
+      item.classList.toggle('selected', index === state.selectedIndex);
+      item.setAttribute('aria-selected', String(index === state.selectedIndex));
+    });
+    items[state.selectedIndex]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function getNavigableItems() {
+    return Array.from(root.querySelectorAll('.panel.active .item:not(.current)'));
   }
 
   async function runAction(successMessage, message) {
@@ -577,6 +774,42 @@
         white-space: nowrap;
       }
 
+      .finder {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 14px 14px 0;
+        padding: 10px 12px;
+        background: #fff;
+        border: 1px solid #e7e7e3;
+        border-radius: 13px;
+        box-shadow:
+          0 8px 24px rgba(31, 35, 40, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.95);
+      }
+
+      .finder svg {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 auto;
+        fill: none;
+        stroke: #aaa9a2;
+      }
+
+      .finder-input {
+        width: 100%;
+        min-width: 0;
+        color: #2d2d2b;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .finder-input::placeholder {
+        color: #aaa9a2;
+      }
+
       .tab-nav {
         display: flex;
         align-self: center;
@@ -663,10 +896,16 @@
       }
 
       .item:hover,
+      .item.selected,
       .item:focus-visible {
         outline: none;
         background: #f7f7f4;
         box-shadow: inset 0 0 0 1px #eeeeea;
+      }
+
+      .item.selected {
+        background: #f6f3ff;
+        box-shadow: inset 0 0 0 1px #e7e0ff;
       }
 
       .item.current {
@@ -866,6 +1105,10 @@
 
   function groupsIcon() {
     return '<svg viewBox="0 0 16 16" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6h12"/></svg>';
+  }
+
+  function searchIcon() {
+    return '<svg viewBox="0 0 16 16" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.25"/><line x1="10.25" y1="10.25" x2="13" y2="13"/></svg>';
   }
 
   function plusIcon() {
