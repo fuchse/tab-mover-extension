@@ -33,11 +33,13 @@
   const CAPTURE_LISTENER_OPTIONS = { capture: true };
   const ACTIVE_CAPTURE_LISTENER_OPTIONS = { capture: true, passive: false };
   const BACKDROP_FADE_MS = 120;
+  const INPUT_RESET_MS = 2000;
 
   let host = null;
   let root = null;
   let previousDocumentOverflow = '';
   let isClosing = false;
+  let inputResetTimer = null;
   let state = {
     currentTab: null,
     groups: [],
@@ -71,6 +73,7 @@
   async function open() {
     if (isClosing) return;
 
+    cancelInputReset();
     mount();
     renderLoading();
 
@@ -112,6 +115,23 @@
     host = null;
     root = null;
     isClosing = false;
+    scheduleInputReset();
+  }
+
+  function scheduleInputReset() {
+    cancelInputReset();
+    inputResetTimer = setTimeout(() => {
+      state.query = '';
+      state.selectedIndex = 0;
+      inputResetTimer = null;
+    }, INPUT_RESET_MS);
+  }
+
+  function cancelInputReset() {
+    if (!inputResetTimer) return;
+
+    clearTimeout(inputResetTimer);
+    inputResetTimer = null;
   }
 
   function mount() {
