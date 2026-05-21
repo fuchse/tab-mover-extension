@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "description": "Quickly move your current tab to any group or window",
   "permissions": [
+    "activeTab",
+    "scripting",
     "tabs",
     "tabGroups",
     "windows"

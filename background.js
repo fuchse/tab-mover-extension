@@ -1,74 +1,109 @@
-const LAUNCHER_WIDTH = 760;
-const LAUNCHER_HEIGHT = 620;
-const LAUNCHER_URL = 'popup.html?launcher=1';
-
-let launcherWindowId = null;
-
-chrome.action.onClicked.addListener(openLauncherWindow);
+chrome.action.onClicked.addListener(tab => {
+  injectOverlay(tab);
+});
 
 chrome.commands.onCommand.addListener(async command => {
-  if (command === 'open-tab-mover') {
-    await openLauncherWindow();
-  }
+  if (command !== 'open-tab-mover') return;
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await injectOverlay(tab);
 });
 
-chrome.windows.onRemoved.addListener(windowId => {
-  if (windowId === launcherWindowId) {
-    launcherWindowId = null;
-  }
-});
-
-async function openLauncherWindow() {
-  const existingLauncher = await getExistingLauncherWindow();
-  if (existingLauncher) {
-    await chrome.windows.update(existingLauncher.id, { focused: true });
-    return;
-  }
-
-  const focusedWindow = await getLastFocusedNormalWindow();
-  const position = getCenteredPosition(focusedWindow);
-  const launcher = await chrome.windows.create({
-    url: chrome.runtime.getURL(LAUNCHER_URL),
-    type: 'popup',
-    focused: true,
-    width: LAUNCHER_WIDTH,
-    height: LAUNCHER_HEIGHT,
-    ...position,
-  });
-
-  launcherWindowId = launcher.id;
-}
-
-async function getExistingLauncherWindow() {
-  if (launcherWindowId === null) return null;
-
-  try {
-    return await chrome.windows.get(launcherWindowId);
-  } catch {
-    launcherWindowId = null;
-    return null;
-  }
-}
-
-async function getLastFocusedNormalWindow() {
-  try {
-    return await chrome.windows.getLastFocused({
-      populate: false,
-      windowTypes: ['normal'],
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleOverlayMessage(message, sender)
+    .then(sendResponse)
+    .catch(error => {
+      console.error(error);
+      sendResponse({ ok: false, error: error.message || 'Unexpected error' });
     });
-  } catch {
-    return null;
+
+  return true;
+});
+
+async function injectOverlay(tab) {
+  if (!tab?.id || !canInjectIntoUrl(tab.url)) return;
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content.js'],
+    });
+  } catch (error) {
+    console.error('Unable to open Tab Mover overlay:', error);
   }
 }
 
-function getCenteredPosition(windowInfo) {
-  if (!windowInfo) return {};
+function canInjectIntoUrl(url = '') {
+  return /^https?:\/\//.test(url) || /^file:\/\//.test(url);
+}
 
-  const { left, top, width, height } = windowInfo;
-  if (![left, top, width, height].every(Number.isFinite)) return {};
+async function handleOverlayMessage(message, sender) {
+  const tab = sender.tab;
+  if (!tab?.id) {
+    throw new Error('No active tab found');
+  }
+
+  switch (message?.type) {
+    case 'TAB_MOVER_GET_STATE':
+      return getOverlayState(tab);
+    case 'TAB_MOVER_MOVE_TO_GROUP':
+      await moveToGroup(tab, message.groupId, message.windowId);
+      return { ok: true };
+    case 'TAB_MOVER_MOVE_TO_WINDOW':
+      await moveToWindow(tab, message.windowId);
+      return { ok: true };
+    case 'TAB_MOVER_UNGROUP':
+      await chrome.tabs.ungroup(tab.id);
+      return { ok: true };
+    case 'TAB_MOVER_CREATE_GROUP':
+      await createGroupAndMove(tab, message.title, message.color);
+      return { ok: true };
+    case 'TAB_MOVER_OPEN_NEW_WINDOW':
+      await chrome.windows.create({ tabId: tab.id });
+      return { ok: true };
+    default:
+      throw new Error('Unknown Tab Mover message');
+  }
+}
+
+async function getOverlayState(tab) {
+  const [groups, windows] = await Promise.all([
+    chrome.tabGroups.query({}),
+    chrome.windows.getAll({ populate: false, windowTypes: ['normal'] }),
+  ]);
 
   return {
-    left: Math.round(left + (width - LAUNCHER_WIDTH) / 2),
-    top: Math.round(top + (height - LAUNCHER_HEIGHT) / 2),
+    ok: true,
+    currentTab: {
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      groupId: tab.groupId,
+      windowId: tab.windowId,
+    },
+    groups,
+    windows,
   };
+}
+
+async function moveToGroup(tab, groupId, windowId) {
+  if (windowId !== tab.windowId) {
+    await chrome.tabs.move(tab.id, { windowId, index: -1 });
+  }
+
+  await chrome.tabs.group({ tabIds: [tab.id], groupId });
+}
+
+async function moveToWindow(tab, windowId) {
+  await chrome.tabs.move(tab.id, { windowId, index: -1 });
+  await chrome.windows.update(windowId, { focused: true });
+}
+
+async function createGroupAndMove(tab, title, color) {
+  const groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+
+  await chrome.tabGroups.update(groupId, {
+    title: title?.trim() || undefined,
+    color: color || 'blue',
+  });
 }
