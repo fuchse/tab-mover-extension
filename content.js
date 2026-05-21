@@ -17,9 +17,23 @@
     cyan: '#06b6d4',
     orange: '#f97316',
   };
+  const PAGE_TRAP_EVENTS = [
+    'mousedown',
+    'mouseup',
+    'click',
+    'dblclick',
+    'contextmenu',
+    'pointerdown',
+    'pointerup',
+    'touchstart',
+    'touchend',
+    'wheel',
+    'focusin',
+  ];
 
   let host = null;
   let root = null;
+  let previousDocumentOverflow = '';
   let state = {
     currentTab: null,
     groups: [],
@@ -71,6 +85,12 @@
 
   function close() {
     document.removeEventListener('keydown', handleDocumentKeydown, true);
+    document.removeEventListener('keyup', trapPageKeyboardEvent, true);
+    document.removeEventListener('keypress', trapPageKeyboardEvent, true);
+    PAGE_TRAP_EVENTS.forEach(type => {
+      document.removeEventListener(type, trapPageEvent, true);
+    });
+    document.documentElement.style.overflow = previousDocumentOverflow;
     host?.remove();
   }
 
@@ -80,7 +100,20 @@
     host = document.createElement('div');
     host.id = 'tab-mover-overlay-host';
     root = host.attachShadow({ mode: 'open' });
+    previousDocumentOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    root.addEventListener('keydown', stopOverlayEventPropagation);
+    root.addEventListener('keyup', stopOverlayEventPropagation);
+    root.addEventListener('keypress', stopOverlayEventPropagation);
+    PAGE_TRAP_EVENTS.forEach(type => {
+      root.addEventListener(type, stopOverlayEventPropagation);
+    });
     document.addEventListener('keydown', handleDocumentKeydown, true);
+    document.addEventListener('keyup', trapPageKeyboardEvent, true);
+    document.addEventListener('keypress', trapPageKeyboardEvent, true);
+    PAGE_TRAP_EVENTS.forEach(type => {
+      document.addEventListener(type, trapPageEvent, true);
+    });
     document.documentElement.appendChild(host);
   }
 
@@ -578,12 +611,45 @@
     });
   }
 
+  function trapPageEvent(event) {
+    if (!host?.isConnected) return;
+
+    if (isEventInsideOverlay(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+
+  function trapPageKeyboardEvent(event) {
+    if (!host?.isConnected) return;
+
+    if (isEventInsideOverlay(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  }
+
+  function stopOverlayEventPropagation(event) {
+    event.stopPropagation();
+  }
+
+  function isEventInsideOverlay(event) {
+    return event.composedPath().includes(host);
+  }
+
   function handleDocumentKeydown(event) {
     if (!host?.isConnected) return;
 
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       if (state.isGroupFormOpen || state.isWindowFormOpen) {
         state.isGroupFormOpen = false;
         state.isWindowFormOpen = false;
@@ -595,6 +661,13 @@
       return;
     }
 
+    if (!isEventInsideOverlay(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return;
+    }
+
     if (state.isGroupFormOpen || state.isWindowFormOpen) {
       return;
     }
@@ -602,6 +675,7 @@
     if (event.key === 'ArrowDown' || (event.key === 'Tab' && !event.shiftKey)) {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       moveSelection(1);
       return;
     }
@@ -609,6 +683,7 @@
     if (event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey)) {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       moveSelection(-1);
       return;
     }
@@ -616,6 +691,7 @@
     if (!state.query.trim() && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       state.activePanel = event.key === 'ArrowLeft' ? 'groups' : 'windows';
       state.selectedIndex = 0;
       render();
@@ -628,6 +704,7 @@
 
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       selectedItem.click();
     }
   }
