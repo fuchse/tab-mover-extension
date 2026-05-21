@@ -30,6 +30,8 @@
     'wheel',
     'focusin',
   ];
+  const CAPTURE_LISTENER_OPTIONS = { capture: true };
+  const ACTIVE_CAPTURE_LISTENER_OPTIONS = { capture: true, passive: false };
   const BACKDROP_FADE_MS = 120;
 
   let host = null;
@@ -99,11 +101,11 @@
   }
 
   function cleanupOverlay() {
-    document.removeEventListener('keydown', handleDocumentKeydown, true);
-    document.removeEventListener('keyup', trapPageKeyboardEvent, true);
-    document.removeEventListener('keypress', trapPageKeyboardEvent, true);
+    document.removeEventListener('keydown', handleDocumentKeydown, CAPTURE_LISTENER_OPTIONS);
+    document.removeEventListener('keyup', trapPageKeyboardEvent, CAPTURE_LISTENER_OPTIONS);
+    document.removeEventListener('keypress', trapPageKeyboardEvent, CAPTURE_LISTENER_OPTIONS);
     PAGE_TRAP_EVENTS.forEach(type => {
-      document.removeEventListener(type, trapPageEvent, true);
+      document.removeEventListener(type, trapPageEvent, ACTIVE_CAPTURE_LISTENER_OPTIONS);
     });
     document.documentElement.style.overflow = previousDocumentOverflow;
     host?.remove();
@@ -126,11 +128,11 @@
     PAGE_TRAP_EVENTS.forEach(type => {
       root.addEventListener(type, stopOverlayEventPropagation);
     });
-    document.addEventListener('keydown', handleDocumentKeydown, true);
-    document.addEventListener('keyup', trapPageKeyboardEvent, true);
-    document.addEventListener('keypress', trapPageKeyboardEvent, true);
+    document.addEventListener('keydown', handleDocumentKeydown, CAPTURE_LISTENER_OPTIONS);
+    document.addEventListener('keyup', trapPageKeyboardEvent, CAPTURE_LISTENER_OPTIONS);
+    document.addEventListener('keypress', trapPageKeyboardEvent, CAPTURE_LISTENER_OPTIONS);
     PAGE_TRAP_EVENTS.forEach(type => {
-      document.addEventListener(type, trapPageEvent, true);
+      document.addEventListener(type, trapPageEvent, ACTIVE_CAPTURE_LISTENER_OPTIONS);
     });
     document.documentElement.appendChild(host);
     requestAnimationFrame(() => host?.classList.add('visible'));
