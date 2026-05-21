@@ -224,18 +224,6 @@
     const container = root.getElementById('groups-panel');
     container.innerHTML = '';
 
-    if (state.currentTab && state.currentTab.groupId !== TAB_GROUP_ID_NONE) {
-      container.appendChild(makeItem({
-        icon: ungroupIcon(),
-        label: 'Remove from group',
-        meta: 'Current tab',
-        onClick: () => runAction('Tab removed from group', {
-          type: 'TAB_MOVER_UNGROUP',
-        }),
-      }));
-      container.appendChild(makeDivider());
-    }
-
     if (state.groups.length > 0) {
       container.appendChild(makeLabel('Existing groups'));
 
@@ -243,17 +231,23 @@
         const dot = document.createElement('span');
         dot.className = 'item-dot';
         dot.style.background = COLOR_HEX[group.color] || COLOR_HEX.grey;
+        const isCurrent = state.currentTab?.groupId === group.id;
 
         container.appendChild(makeItem({
           prefix: dot,
           label: group.title || '(unnamed group)',
           meta: `Window ${group.windowId}`,
-          isCurrent: state.currentTab?.groupId === group.id,
-          onClick: () => runAction('Tab moved to group', {
-            type: 'TAB_MOVER_MOVE_TO_GROUP',
-            groupId: group.id,
-            windowId: group.windowId,
-          }),
+          isCurrent,
+          currentLabel: isCurrent ? 'Remove' : undefined,
+          onClick: isCurrent
+            ? () => runAction('Tab removed from group', {
+              type: 'TAB_MOVER_UNGROUP',
+            })
+            : () => runAction('Tab moved to group', {
+              type: 'TAB_MOVER_MOVE_TO_GROUP',
+              groupId: group.id,
+              windowId: group.windowId,
+            }),
         }));
       });
 
@@ -353,11 +347,16 @@
           meta: `Group · Window ${group.windowId}`,
           score,
           isCurrent: state.currentTab?.groupId === group.id,
-          onClick: () => runAction('Tab moved to group', {
-            type: 'TAB_MOVER_MOVE_TO_GROUP',
-            groupId: group.id,
-            windowId: group.windowId,
-          }),
+          currentLabel: state.currentTab?.groupId === group.id ? 'Remove' : undefined,
+          onClick: state.currentTab?.groupId === group.id
+            ? () => runAction('Tab removed from group', {
+              type: 'TAB_MOVER_UNGROUP',
+            })
+            : () => runAction('Tab moved to group', {
+              type: 'TAB_MOVER_MOVE_TO_GROUP',
+              groupId: group.id,
+              windowId: group.windowId,
+            }),
         };
       })
       .filter(Boolean);
@@ -531,10 +530,10 @@
     return form;
   }
 
-  function makeItem({ prefix, icon, label, meta, isCurrent, isNew, onClick }) {
+  function makeItem({ prefix, icon, label, meta, isCurrent, currentLabel, isNew, onClick }) {
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = `item${isCurrent ? ' current' : ''}${isNew ? ' item-new' : ''}`;
+    item.className = `item${isCurrent ? ' current' : ''}${isCurrent && currentLabel ? ' current-action' : ''}${isNew ? ' item-new' : ''}`;
 
     if (prefix) {
       item.appendChild(prefix);
@@ -556,10 +555,10 @@
 
     const metaEl = document.createElement('span');
     metaEl.className = isCurrent ? 'item-badge' : 'item-meta';
-    metaEl.textContent = isCurrent ? 'here' : meta || '';
+    metaEl.textContent = isCurrent ? currentLabel || 'here' : meta || '';
     item.appendChild(metaEl);
 
-    if (onClick && !isCurrent) item.addEventListener('click', onClick);
+    if (onClick && (!isCurrent || currentLabel)) item.addEventListener('click', onClick);
     return item;
   }
 
@@ -766,7 +765,7 @@
   }
 
   function getNavigableItems() {
-    return Array.from(root.querySelectorAll('.panel.active .item:not(.current)'));
+    return Array.from(root.querySelectorAll('.panel.active .item:not(.current), .panel.active .item.current-action'));
   }
 
   async function runAction(successMessage, message) {
@@ -1074,8 +1073,10 @@
 
       .item.current {
         cursor: default;
-        background: #f6f3ff;
-        box-shadow: inset 0 0 0 1px #e7e0ff;
+      }
+
+      .item.current-action {
+        cursor: pointer;
       }
 
       .item-dot {
